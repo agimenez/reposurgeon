@@ -69,7 +69,9 @@ command and written out with the <option>--format=fossil</option> option of
 the <command>write</command>. Ignore patterns are not translated
 in either direction.</para>
 
-<para>CVS is supported for read only, not write.  For CVS,
+<para>CVS and BitKeeper are supported for read only, not write, and
+the exporter <command>reposurgeon</command> uses will fail on
+BitKeeper versions 6 and later.  For both,
 <command>reposurgeon</command> must be run from within a repository
 directory.</para>
 
@@ -183,7 +185,7 @@ edit                   ;; edit all editable objects
                        ;; of a branch named 2317, or a commit with legacy ID
                        ;; 2317. Inspect what is found. A plain number is
                        ;; probably a legacy ID inherited from a Subversion
-                       ;; revision number.
+                       ;; or BitKeeper revision number.
 
 /regression/ list      ;; list all commits and tags with comments or
                        ;; committer headers or author headers containing
@@ -236,11 +238,12 @@ distinguish them from command keywords.</para>
 <varlistentry>
 <term><firstterm>legacy IDs</firstterm></term>
 <listitem>
-<para>If the contents of name brackets (&lt; &gt;) does not match a tag or
-branch name, the interpreter next searches legacy IDs of commits.  This
-is especially useful when you have imported a Subversion dump; it
-means that commits made from it can be referred to by their corresponding
-Subversion revision numbers.</para>
+<para>If the contents of name brackets (&lt; &gt;) does not match a
+tag or branch name, the interpreter next searches legacy IDs of
+commits.  This is especially useful when you have imported a
+Subversion dump or a BitKeeper repository; it means that commits made
+from it can be referred to by their corresponding Subversion or
+BitKeeper revision numbers.</para>
 </listitem>
 </varlistentry>
 <varlistentry>
@@ -2080,12 +2083,14 @@ associated with repository conversions from order systems.</para>
 set, defaulting to all events.</para>
 
 <para>Lifts from CVS and Subversion may have only usernames local to
-the repository host in committer and author IDs. DVCSes want email
-addresses (net-wide identifiers) and complete names. To supply the map
-from one to the other, an authors file is expected to consist of
-lines each beginning with a local user ID, followed by a '=' (possibly
-surrounded by whitespace) followed by a full name and email address,
-optionally followed by a timezone offset field.  Thus:</para>
+the repository host in committer and author IDs; BitKeeper uses full
+email names as IDs but does not include a name-among-humans
+part. DVCSes want email addresses (net-wide identifiers) and complete
+names. To supply the map from one to the other, an authors file is
+expected to consist of lines each beginning with a local user ID,
+followed by a '=' (possibly surrounded by whitespace) followed by a
+full name and email address, optionally followed by a timezone offset
+field.  Thus:</para>
 
 <literallayout>
 ferd = Ferd J. Foonly &lt;foonly@foo.com&gt; -0500
@@ -2919,7 +2924,9 @@ compatibility table describes which patterns will translate;
 glob or regexp syntax or negation.</para>
 
 <para>RCS has no ignore files or patterns and is therefore not
-included in the table.</para>
+included in the table.  BitKeeper ignore specifications are moved
+to a root .gitignore, but as their globbing rules are not publicly
+documented we cannot guarantee identical behavior.</para>
 
 <informaltable pgwide='0' frame='all'>
   <tgroup cols='3' align='center'>
@@ -3319,6 +3326,14 @@ is due to inherent problems with CVS's file-oriented model.</para>
 <listitem>
 <para>Requires cvs-fast-export (yes, that's not a typo; cvs-fast-export
 handles RCS collections as well). The caveat for CVS applies.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>BitKeeper</term>
+<listitem>
+<para>Requires SourcePuller at version 0.3 or later.  Note:
+SourcePuller has only been tested on BitKeeper version 5; it
+will fail on versions 6 and later.</para>
 </listitem>
 </varlistentry>
 </variablelist>

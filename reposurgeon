@@ -540,6 +540,22 @@ core
         cookies=(VCS.nobug + VCS.bare_numeric,),
         project=b"http://catb.org/~esr/src",
         notes=b""),
+    VCS(name=b"bk",
+        subdirectory=b"BitKeeper",
+        exporter=b"sp --reposurgeon fast-export",
+        styleflags={},
+        properties=False,
+        initializer=None,
+        importer=None,
+        checkout=None,
+        lister=None,
+        preserve=set(),
+        authormap=None,
+        ignorename=None,
+        dfltignores=b"",	# Has none
+        cookies=(VCS.bare_numeric,),
+        project=b"http://catb.org/~esr/sp",
+        notes=b"Only BitKeeper versions up to 5 are supported."),
     ]
 
 # Import and export filter methods for VCSes that use magic files rather

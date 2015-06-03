@@ -4,9 +4,9 @@
 # 0. Copy this into a scratch directory as Makefile.
 # 1. Make sure reposurgeon, repostreamer, and repopuller are on your $PATH.
 # 2. Set PROJECT to the name of your project.
-# 3. Set SOURCE_VCS to svn or cvs.
+# 3. Set SOURCE_VCS to svn, cvs, or bk.
 # 4. Set TARGET_VCS to git, hg, or bzr.
-# 5. For svn, set REMOTE_URL to point at the remote repository
+# 5. For svn or bk, set REMOTE_URL to point at the remote repository
 #    you want to convert.
 # 6. For cvs, set CVS_HOST to the repo hostname and CVS_MODULE to the module,
 #    then uncomment the line that builds REMOTE_URL 
@@ -27,7 +27,7 @@
 # name extra metadata such as a comments mailbox.
 #
 # After the conversion, you may be able to perform a sanity check with
-# 'make diff' (supported for CVS and svn).  You can check
+# 'make diff' (supported for CVS and svn, not for bk).  You can check
 # individual tags or branches with 'make diff-tag'
 #
 # Note that CVS-checkout directories not matched in a conversion may be

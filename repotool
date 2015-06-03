@@ -16,6 +16,9 @@ export)
     if [ -d locks ]
     then
 	    svnadmin dump .
+    elif [ -f SCCS/s.ChangeSet ]
+    then
+	    sourcepuller --reposurgeon fast-export .
     elif [ -d .git ]
     then
 	    git fast-export --all
@@ -69,6 +72,14 @@ EOF
     elif [ -f $operand/.cvssync ]
     then
 	cvssync -o $operand `cat $operand/.cvssync`
+    elif [ `expr "$operand" : "bk://"` = 5 ]
+    then
+	local=`basename $operand`-mirror
+	sourcepuller clone $operand $local
+	echo "$operand" >$local/.spsync
+    elif [ -f $operand/.spsync ]
+    then
+	sourcepuller pull `cat $operand/.spsync` $operand
     else
 	echo "repotool: $operand does not look like a repository mirror."
 	exit 1
@@ -86,6 +97,9 @@ tags)
     elif [ -d locks ]
     then
 	    svn ls "^/tags"
+    elif [ -f SCCS/s.ChangeSet ]
+    then
+	    sourcepuller tags | sed -n "/^\t/s/\t//p"
     elif [ -d .git ]
     then
 	    git tag -l
@@ -134,6 +148,13 @@ checkout)
 	    rev="-d $rev"
 	fi
 	svn co $rev file://${PWD} $outdir
+    elif [ -f SCCS/s.ChangeSet ]
+    then
+	if [ "$rev" ]
+	then
+	    rev="-R $rev"
+	fi
+	sourcepuller checkout $rev . $outdir
     elif [ -d .git ]
     then
 	git clone --quiet --shared --no-checkout . $outdir

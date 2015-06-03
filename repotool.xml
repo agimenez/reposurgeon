@@ -13,7 +13,7 @@
 </refmeta>
 <refnamediv id='name'>
 <refname>repotool</refname>
-<refpurpose>query a CVS, Subversion, git, bzr, hg, or
+<refpurpose>query a CVS, Subversion, BitKeeper, git, bzr, hg, or
 darcs repository in a uniform way</refpurpose>
 </refnamediv>
 <refsynopsisdiv id='synopsis'>
@@ -38,7 +38,7 @@ action.</para>
 
 <para>The 'export' action, run from within a repository directory
 (within a module directory for CVS), dumps a copy of a CVS,
-Subversion, git, bzr, hg, or darcs repository to a flat
+Subversion, BitKeeper, git, bzr, hg, or darcs repository to a flat
 history file readable by reposurgeon.</para>
 
 <para>The 'tags' option, run from within a repository directory
@@ -68,8 +68,8 @@ followed by basenames of paths to exclude from comparison. You can get
 a context-diff report on file digfferences with the -u option.</para>
 
 <para>The 'mirror' action makes or updates a local mirror of a
-Subversion or CVS repo. It requires a single argument,
-either a Subversion URL or a CVS URL, or the name
+Subversion, CVS, or BitKeeper repo. It requires a single argument,
+either a Subversion URL or a CVS URL or a BitKeeper URL, or the name
 of a local mirror directory created by a previous run. The first form
 creates a local mirror of the repository in a directory named after
 the last segment of the URL, with the suffix
@@ -78,7 +78,7 @@ optional) second argument. The second form updates the local mirror,
 doing an incremental fetch; just give the mirror directory
 name.</para>
 
-<para>Subversion URLs are as specified in the public
+<para>Subversion and BitKeeper URLs are as specified in the public
 documentation for those systems.  CVS URLs must specify a host and
 repository path, followed by a '#', followed by a module name.</para>
 </refsect1>
@@ -93,7 +93,9 @@ following engines:
 <citerefentry><refentrytitle>svnadmin</refentrytitle><manvolnum>1</manvolnum></citerefentry>
 (for SVN),
 <citerefentry><refentrytitle>hg-fast-export.py</refentrytitle><manvolnum>1</manvolnum></citerefentry>
-(for hg).
+(for hg),
+<citerefentry><refentrytitle>sp</refentrytitle><manvolnum>1</manvolnum></citerefentry>
+(for BitKeeper).
 You must have the appropriate engine in your $PATH
 for whatever kind of repository you are streaming.
 </para>
