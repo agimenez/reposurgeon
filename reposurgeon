@@ -1672,7 +1672,7 @@ class Reset(object):
 class FileOp(object):
     "Represent a primitive operation on a file."
     __slots__ = ("repo", "op", "committish", "source", "target",
-                 "mode", "path", "ref", "inline",
+                 "mode", "path", "ref", "inline", "deletehook",
                  "sourcedelete", "targetdelete")
     __hash__ = None
     modify_re = re.compile(r"(M) ([0-9]+) (\S+) (.*)")
@@ -1687,8 +1687,12 @@ class FileOp(object):
         self.path = None
         self.ref = None
         self.inline = None
+        self.deletehook = None	     # Hook used during deletion operations
     def setOp(self, op):
         self.op = op
+    def index(self):
+        "Our 0-origin index in our repo."
+        return self.repo.index(self)
     @staticmethod
     def sortkey(fileop):
         "Compute a key suited for sorting FileOps as git fast-export does."
@@ -1762,10 +1766,12 @@ class FileOp(object):
             return True
         else:
             return self.paths() & other.paths()
-    def dump(self, vcs=None, options=None):
+    def dump(self, vcs=None, options=None, realized=None, internals=None):
         "Dump this fileop in import-stream format."
         pacify_pylint(vcs)
         pacify_pylint(options)
+        pacify_pylint(realized)
+        pacify_pylint(internals)
         if self.op == b"M":
             showmode = self.mode
             if isinstance(self.mode, int):
@@ -1793,7 +1799,13 @@ class FileOp(object):
             parts = [self.op]
         else:
             raise Fatal(b"unexpected fileop %s while writing" % self.op)
-        return b"".join(parts)
+        try:
+            last = not isinstance(self.repo.events[self.index()+1], FileOp)
+        except IndexError:
+            last = True
+        if last and not "no-nl-after-commit" in self.repo.export_style():
+            parts.append(b"\n")
+        return b"".join(parts) + "\n"
     def __str__(self):
         return self.dump(self.repo.vcs)
 
@@ -1811,7 +1823,7 @@ class Callout(object):
 class Commit(object):
     "Generic commit object."
     __slots__ = ("repo", "mark", "authors", "committer", "comment",
-                 "branch", "fileops", "properties", "filemap", "color",
+                 "branch", "properties", "filemap", "color",
                  "legacy_id", "common", "splits", "deletehook", "attachments",
                  "_parent_nodes", "_child_nodes", "_pathset")
     __hash__ = None
@@ -1822,7 +1834,6 @@ class Commit(object):
         self.committer = None        # Person responsible for committing it.
         self.comment = None          # Commit comment
         self.branch = None           # branch name
-        self.fileops = []            # blob and file operation list
         self.properties = collections.OrderedDict()         # commit properties (extension)
         self.filemap = None
         self.color = None
@@ -1853,25 +1864,43 @@ class Commit(object):
         self.branch = intern(branch)
     def operations(self):
         "Fileops associated with this commit; hides how this is represented."
-        return self.fileops
+        i = self.index() + 1
+        ops = []
+        try:
+            while isinstance(self.repo.events[i], FileOp):
+                ops.append(self.repo.events[i])
+                i += 1
+        except IndexError:
+            pass
+        return ops
     def set_operations(self, ops):
         "Replace the set of fileops associated with this commit."
-        self.fileops = ops
+        i = self.index() + 1
+        j = 0
+        try:
+            while isinstance(self.repo.events[i + j], FileOp):
+                j += 1
+        except IndexError:
+            pass
+        self.repo.events = self.repo.events[:i] + ops + self.repo.events[i+j:]
+        if j > 0:
+            self.repo.declare_sequence_mutation()
     def append_operation(self, op):
         "Append to the set of fileops associated with this commit."
-        self.fileops.append(op)
+        self.set_operations(self.operations() + [op])
     def prepend_operation(self, op):
         "Prepend to the set of fileops associated with this commit."
-        self.fileops.insert(0, op)
+        self.set_operations([op] + self.operations())
     def sort_operations(self):
         "Sort fileops the same way git-fast-export does."
-        self.fileops.sort(key=FileOp.sortkey)
+        ops = self.operations()
+        ops.sort(key=FileOp.sortkey)
+        self.set_operations(ops)
     def clone(self, repo=None):
         "Clone this commit, without its fileops, color and children."
         c = copy.copy(self)
         c.committer = copy.deepcopy(self.committer)
         c.authors = copy.deepcopy(self.authors)
-        c.set_operations([])
         c.filemap = None
         c._pathset = None
         c.color = None
@@ -2261,7 +2290,6 @@ class Commit(object):
             # Only files touched by non-deleteall ops might disappear.
             check_delete = paths
         new_ops = []
-        self.set_operations(new_ops)
         for path in check_delete:
             if path in parent and path not in current:
                 fileop = FileOp(self.repo)
@@ -2280,6 +2308,7 @@ class Commit(object):
                 if mark == "inline":
                     fileop.inline = inline
                 new_ops.append(fileop)
+        self.set_operations(new_ops)
         # Finishing touches:
         self.sort_operations()
         self._pathset = None
@@ -2403,8 +2432,7 @@ class Commit(object):
                         parts.append(b"property %s\n" % name)
                 else:
                     parts.append(b"property %s %d %s\n" % (name, len(str(value)), str(value)))
-        parts.extend(op.dump(vcs) + b"\n" for op in self.operations())
-        if not "no-nl-after-commit" in self.repo.export_style():
+        if not self.operations() and not "no-nl-after-commit" in self.repo.export_style():
             parts.append(b"\n")
         return b"".join(parts)
     def __str__(self):
@@ -3249,6 +3277,7 @@ class StreamParser:
                             commitbegin = self.import_line
                             commit = Commit(self.repo)
                             commit.set_branch(line.split()[1])
+                            commitops = []
                             while True:
                                 line = self.fi_readline()
                                 if not line:
@@ -3312,9 +3341,9 @@ class StreamParser:
                                         commit.add_parent(mark)
                                 # Handling of file ops begins.
                                 elif line[0] in (b"C", b"D", b"R"):
-                                    commit.append_operation(FileOp(self.repo).parse(line))
+                                    commitops.append(FileOp(self.repo).parse(line))
                                 elif line == b"deleteall\n":
-                                    commit.append_operation(FileOp(self.repo).parse(b"deleteall"))
+                                    commitops.append(FileOp(self.repo).parse(b"deleteall"))
                                 elif line[0] == b"M":
                                     fileop = FileOp(self.repo).parse(line)
                                     if fileop.ref != 'inline':
@@ -3325,7 +3354,7 @@ class StreamParser:
                                             # submodule link.
                                             if fileop.mode != b"160000":
                                                 self.error(b"ref %s could not be resolved" % fileop.ref)
-                                    commit.append_operation(fileop)
+                                    commitops.append(fileop)
                                     if fileop.mode == b"160000":
                                         # This is a submodule link.  The ref
                                         # field is a SHA1 hash and the path
@@ -3338,7 +3367,7 @@ class StreamParser:
                                         self.fi_parse_fileop(fileop)
                                 elif line[0] == b"N":
                                     fileop = FileOp(self.repo).parse(line)
-                                    commit.append_operation(fileop)
+                                    commitops.append(fileop)
                                     self.fi_parse_fileop(fileop)
                                     self.repo.inlines += 1
                                 # Handling of file ops ends.
@@ -3366,6 +3395,7 @@ class StreamParser:
                                 self.warn(b"unmarked commit")
                             self.repo.addEvent(commit)
                             commitcount += 1
+                            commit.set_operations(commitops)
                             baton.twirl()
                         elif line.startswith(b"reset"):
                             reset = Reset(self.repo)
@@ -4030,19 +4060,19 @@ class StreamParser:
             newcommits = []
             commit.legacy_id = revision
             if len(other_ops) <= 1:
+                newcommits.append(commit)
                 # In the ordinary case, we can assign all non-deleteall fileops
                 # to the base commit.
                 self.repo.legacy_map[b"SVN:%s" % commit.legacy_id] = commit
                 try:
                     commit.common, stage = next(oplist)
-                    commit.set_operations(stage)
+                    newcommits += stage
                     commit.invalidate_pathset_cache()
                 except StopIteration:
                     commit.common = os.path.commonprefix([node.path for node in record.nodes])
                 commit.set_mark(self.__newmark())
                 if debug_enable(DEBUG_EXTRACT):
                     announce(b"r%s gets mark %s" % (revision, commit.mark))
-                newcommits.append(commit)
             # If the commit is mixed, or there are deletealls left over,
             # handle that.
             oplist = sorted(oplist, key=operator.itemgetter(0))
@@ -4054,17 +4084,14 @@ class StreamParser:
                 self.repo.legacy_map["SVN:%s" % split.legacy_id] = split
                 split.comment += "\n[[Split portion of a mixed commit.]]\n"
                 split.set_mark(self.__newmark())
-                split.set_operations(fileops)
                 split.invalidate_pathset_cache()
                 newcommits.append(split)
+                newcommits += fileops
             # The revision is truly mixed if there is more than one clique
             # not consisting entirely of deleteall operations.
             if len(other_ops) > 1:
                 # Store the last used split id
                 split_commits[revision] = split.legacy_id
-            # Sort fileops according to git rules
-            for newcommit in newcommits:
-                newcommit.sort_operations()
             # Deduce links between branches on the basis of copies. This
             # is tricky because a revision can be the target of multiple
             # copies.  Humans don't abuse this because tracking multiple
@@ -4079,6 +4106,7 @@ class StreamParser:
             # No code uses the result if branch analysis is turned off.
             if not nobranch:
                 for newcommit in newcommits:
+                    if not isinstance(newcommit, Commit): continue
                     if commit.mark in self.branchlink: continue
                     copies = [node for node in record.nodes \
                               if node.from_rev is not None \
@@ -4158,8 +4186,14 @@ class StreamParser:
                                 complain(b"lookback for %s failed" % latest)
                             raise Fatal(b"couldn't find a branch root for the copy of %s at r%s." % (latest.path, latest.revision))
             # We're done, add all the new commits
+            oldlen = len(self.repo.events)
             self.repo.events += newcommits
+            newlen = len(self.repo.events)
             self.repo.declare_sequence_mutation()
+            # Sort fileops according to git rules
+            for newevent in self.repo.events[oldlen:newlen]:
+                if isinstance(newevent, Commit):
+                    newevent.sort_operations()
             # Report progress, and give up our scheduler slot
             # so as not to eat the processor.
             baton.twirl()
@@ -5777,10 +5811,16 @@ class Repository:
                 # Never delete a blob except as a side effect of
                 # deleting a commit.
                 event.deletehook = False
+            elif isinstance(event, FileOp):
+                # Likewise, never delete a FileOp except as a side effect of
+                # deleting a commit.
+                event.deletehook = False
             elif isinstance(event, (Tag, Reset, Passthrough)):
                 event.deletehook = (b"--delete" in policy)
             elif isinstance(event, Commit):
                 event.deletehook = True
+                for fileop in event.operations():
+                    fileop.deletehook = True
                 # Decide the new target for tags
                 filter_only = True
                 if tagforward and event.has_children():
@@ -6049,6 +6089,8 @@ class Repository:
                                         fld))
                         setattr(event, fld, new)
             self.invalidate_object_map()
+            # Uclear why this is neededm but event.operations() fails otherwise
+            self.declare_sequence_mutation()
             # Now marks in fileops
             if isinstance(event, Commit):
                 for fileop in event.operations():
