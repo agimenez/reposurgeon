@@ -6010,10 +6010,10 @@ class Repository:
                     markmap[event.mark] = origin + newcount
                     newcount += 1
         for event in self.events:
-            for fld in (b"mark", b"committish"):
+            for fld in (b"mark", b"committish", b"ref"):
                 try:
                     old = getattr(event, fld)
-                    if old is not None:
+                    if old is not None and old.startswith(":"):
                         new = remark(old, event)
                         if debug_enable(DEBUG_UNITE):
                             announce(b"renumbering %s -> %s in %s.%s" % (old, new,
@@ -6022,13 +6022,6 @@ class Repository:
                         setattr(event, fld, new)
                 except AttributeError:
                     pass
-        for commit in self.commits():
-            for fileop in commit.operations():
-                if fileop.op == b"M" and fileop.ref.startswith(b":"):
-                    new = remark(fileop.ref, fileop)
-                    if debug_enable(DEBUG_UNITE):
-                        announce(b"renumbering %s -> %s in fileop" % (fileop.ref, new))
-                    fileop.ref = new
             if baton:
                 baton.bumpcounter()
         self.invalidate_object_map()
@@ -9443,7 +9436,7 @@ in the commit's ancestry.
             except ValueError:
                 raise Recoverable(b"non-numeric mark %s in add command" % mark)
             if not isinstance(repo.objfind(mark), Blob):
-                raise Recoverable(b"mark %s in add command does not refer to a blob")
+                raise Recoverable(b"mark %s in add command does not refer to a blob" % mark)
             elif markval >= min(self.selection):
                 raise Recoverable(b"mark %s in add command is after add location" % mark)
             path = fields[3]
