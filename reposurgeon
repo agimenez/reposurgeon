@@ -9417,7 +9417,7 @@ in the commit's ancestry.
             path = fields[1]
             for _, event in self.selected(Commit):
                 if path in event.paths():
-                    raise Recoverable(b"%s alreadly has an op for %s" \
+                    raise Recoverable(b"%s already has an op for %s" \
                                       % (event.mark, path))
                 if repo.ancestor_count(event, path) == 0:
                     raise Recoverable(b"no previous M for %s" % path)
