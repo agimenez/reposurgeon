@@ -1673,7 +1673,7 @@ class FileOp(object):
     "Represent a primitive operation on a file."
     __slots__ = ("repo", "op", "committish", "source", "target",
                  "mode", "path", "ref", "inline", "deletehook",
-                 "sourcedelete", "targetdelete")
+                 "sourcedelete", "targetdelete", "color")
     __hash__ = None
     modify_re = re.compile(r"(M) ([0-9]+) (\S+) (.*)")
     sortkey_sentinel = chr(ord(b"/") + 1)
@@ -1688,6 +1688,7 @@ class FileOp(object):
         self.ref = None
         self.inline = None
         self.deletehook = None	     # Hook used during deletion operations
+        self.color = None
     def setOp(self, op):
         self.op = op
     def index(self):
@@ -6691,7 +6692,11 @@ class RepositoryList:
         # Front events go with early segment, they'll be copied to late one.
         for event in self.repo.front_events():
             event.color = "early"
-        assert all(hasattr(x, b"color") or hasattr(x, b"colors") or isinstance(x, Reset) for x in self.repo)
+        # FileOps go with their commits
+        for event in self.repo.commits():
+            for op in event.operations():
+                op.color = event.color
+        assert all(hasattr(x, b"color") or hasattr(x, b"colors") or isinstance(x, Reset or isinstance(x, FileOp)) for x in self.repo)
         # Resets are tricky.  One may have both colors.
         # Blobs can have both colors too, through references in
         # commits on both sides of the cut, but we took care
